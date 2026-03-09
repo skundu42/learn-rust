@@ -12,6 +12,8 @@
     "next": "^15.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "@supabase/supabase-js": "^2.49.1",
+    "@supabase/ssr": "^0.6.1",
     "@codemirror/lang-rust": "^6.0.1",
     "@codemirror/theme-one-dark": "^6.1.2",
     "@uiw/react-codemirror": "^4.23.6",

@@ -2,10 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
-import { CheckCircle2, ChevronDown, ChevronRight, BookOpen, Cpu, BarChart3, Wrench, X } from "lucide-react";
+import { useState, useEffect, useTransition } from "react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  BookOpen,
+  Cpu,
+  BarChart3,
+  Wrench,
+  X,
+  LogOut,
+  LogIn,
+  Lock,
+  User,
+} from "lucide-react";
 import { LESSONS, TRACKS, getLessonsByTrack, type Track } from "@/lib/lessons";
-import { getCompletedLessons } from "@/lib/utils";
+import { signOut } from "@/app/auth/actions";
 import { cn } from "@/lib/utils";
 
 const TRACK_ICONS: Record<Track, React.ReactNode> = {
@@ -15,14 +28,23 @@ const TRACK_ICONS: Record<Track, React.ReactNode> = {
   projects: <Wrench size={14} />,
 };
 
-interface SidebarProps {
-  open?: boolean;
-  onClose?: () => void;
+interface UserInfo {
+  id: string;
+  email: string;
+  name: string;
 }
 
-export default function Sidebar({ open, onClose }: SidebarProps) {
+interface SidebarProps {
+  onClose?: () => void;
+  user: UserInfo | null;
+  completedIds: number[];
+}
+
+const FREE_LESSON_ID = 1;
+
+export default function Sidebar({ onClose, user, completedIds }: SidebarProps) {
   const pathname = usePathname();
-  const [completed, setCompleted] = useState<number[]>([]);
+  const [isPending, startTransition] = useTransition();
   const [openTracks, setOpenTracks] = useState<Record<Track, boolean>>({
     fundamentals: true,
     advanced: false,
@@ -30,18 +52,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     projects: false,
   });
 
-  useEffect(() => {
-    setCompleted(getCompletedLessons());
-    const handler = () => setCompleted(getCompletedLessons());
-    window.addEventListener("storage", handler);
-    window.addEventListener("lesson-completed", handler);
-    return () => {
-      window.removeEventListener("storage", handler);
-      window.removeEventListener("lesson-completed", handler);
-    };
-  }, []);
-
-  // Auto-expand track for current lesson
+  // Auto-expand track for the active lesson
   useEffect(() => {
     const slug = pathname.split("/learn/")[1];
     if (!slug) return;
@@ -55,27 +66,23 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     setOpenTracks((prev) => ({ ...prev, [track]: !prev[track] }));
   };
 
-  const totalDone = completed.length;
+  const handleSignOut = () => {
+    startTransition(async () => {
+      await signOut();
+    });
+  };
+
+  const totalDone = completedIds.length;
   const totalLessons = LESSONS.length;
   const overallPct = Math.round((totalDone / totalLessons) * 100);
 
   return (
-    <aside
-      className={cn(
-        "flex flex-col h-full bg-surface border-r border-[var(--border)] w-64 shrink-0",
-        "transition-transform duration-300",
-        open === false ? "-translate-x-full" : "translate-x-0"
-      )}
-    >
+    <aside className="flex flex-col h-full bg-surface border-r border-[var(--border)] w-64 shrink-0">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-4 border-b border-[var(--border)]">
         <Link href="/" className="flex items-center gap-2 group">
-          <span className="text-accent font-mono font-bold text-lg tracking-tight">
-            rust
-          </span>
-          <span className="text-foreground font-mono font-bold text-lg tracking-tight">
-            learn
-          </span>
+          <span className="text-accent font-mono font-bold text-lg tracking-tight">rust</span>
+          <span className="text-foreground font-mono font-bold text-lg tracking-tight">learn</span>
         </Link>
         {onClose && (
           <button
@@ -87,6 +94,41 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         )}
       </div>
+
+      {/* User info / guest banner */}
+      {user ? (
+        <div className="px-4 py-3 border-b border-[var(--border)]">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-accent/15 flex items-center justify-center shrink-0">
+              <User size={13} className="text-accent" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-foreground truncate">
+                {user.name || user.email}
+              </p>
+              {user.name && (
+                <p className="text-[10px] text-muted truncate">{user.email}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="px-4 py-3 border-b border-[var(--border)]">
+          <div className="flex items-center gap-2 p-2 rounded bg-accent/5 border border-accent/15">
+            <Lock size={12} className="text-accent shrink-0" />
+            <p className="text-[11px] text-muted leading-tight flex-1">
+              Sign in to unlock all lessons
+            </p>
+            <Link
+              href="/auth/login"
+              className="text-[11px] text-accent font-medium hover:underline shrink-0"
+              onClick={onClose}
+            >
+              Sign in
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Overall progress */}
       <div className="px-4 py-3 border-b border-[var(--border)]">
@@ -109,13 +151,12 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         {TRACKS.map((track) => {
           const lessons = getLessonsByTrack(track.id);
           const donePct = Math.round(
-            (lessons.filter((l) => completed.includes(l.id)).length / lessons.length) * 100
+            (lessons.filter((l) => completedIds.includes(l.id)).length / lessons.length) * 100
           );
           const isExpanded = openTracks[track.id];
 
           return (
             <div key={track.id} className="mb-0.5">
-              {/* Track header */}
               <button
                 onClick={() => toggleTrack(track.id)}
                 className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-[var(--surface-2)] transition-colors text-left"
@@ -126,9 +167,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                 <span className="flex-1 text-xs font-semibold text-foreground tracking-wide uppercase">
                   {track.label}
                 </span>
-                <span className="text-xs font-mono text-muted mr-1">
-                  {donePct}%
-                </span>
+                <span className="text-xs font-mono text-muted mr-1">{donePct}%</span>
                 {isExpanded ? (
                   <ChevronDown size={12} className="text-muted shrink-0" />
                 ) : (
@@ -136,45 +175,46 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                 )}
               </button>
 
-              {/* Lessons */}
               {isExpanded && (
                 <ul>
                   {lessons.map((lesson) => {
                     const isActive = pathname === `/learn/${lesson.slug}`;
-                    const isDone = completed.includes(lesson.id);
+                    const isDone = completedIds.includes(lesson.id);
+                    const isLocked = !user && lesson.id !== FREE_LESSON_ID;
 
                     return (
                       <li key={lesson.id}>
                         <Link
-                          href={`/learn/${lesson.slug}`}
+                          href={
+                            isLocked
+                              ? `/auth/login?next=/learn/${lesson.slug}`
+                              : `/learn/${lesson.slug}`
+                          }
                           className={cn(
                             "flex items-center gap-2.5 pl-8 pr-4 py-2 text-sm transition-colors group",
                             isActive
                               ? "bg-accent/10 text-foreground border-r-2 border-accent"
+                              : isLocked
+                              ? "text-muted/40 hover:bg-[var(--surface-2)]"
                               : "text-muted hover:text-foreground hover:bg-[var(--surface-2)]"
                           )}
                           onClick={onClose}
                         >
-                          {isDone ? (
-                            <CheckCircle2
-                              size={13}
-                              className="text-success shrink-0"
-                            />
+                          {isLocked ? (
+                            <Lock size={11} className="text-muted/40 shrink-0" />
+                          ) : isDone ? (
+                            <CheckCircle2 size={13} className="text-success shrink-0" />
                           ) : (
                             <span
                               className={cn(
                                 "w-3.5 h-3.5 rounded-full border shrink-0 flex items-center justify-center",
-                                isActive
-                                  ? "border-accent"
-                                  : "border-[var(--border)]"
+                                isActive ? "border-accent" : "border-[var(--border)]"
                               )}
                             >
-                              <span className="text-[8px] font-mono text-muted">
-                                {lesson.id}
-                              </span>
+                              <span className="text-[8px] font-mono text-muted">{lesson.id}</span>
                             </span>
                           )}
-                          <span className="truncate leading-relaxed">
+                          <span className={cn("truncate leading-relaxed", isLocked && "opacity-40")}>
                             {lesson.title}
                           </span>
                         </Link>
@@ -189,13 +229,33 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       </nav>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-[var(--border)]">
+      <div className="px-4 py-3 border-t border-[var(--border)] flex items-center justify-between">
         <Link
           href="/"
           className="text-xs text-muted hover:text-foreground transition-colors"
+          onClick={onClose}
         >
-          ← Back to home
+          Home
         </Link>
+        {user ? (
+          <button
+            onClick={handleSignOut}
+            disabled={isPending}
+            className="flex items-center gap-1.5 text-xs text-muted hover:text-danger transition-colors disabled:opacity-50"
+          >
+            <LogOut size={12} />
+            {isPending ? "Signing out..." : "Sign out"}
+          </button>
+        ) : (
+          <Link
+            href="/auth/login"
+            className="flex items-center gap-1.5 text-xs text-accent hover:underline"
+            onClick={onClose}
+          >
+            <LogIn size={12} />
+            Sign in
+          </Link>
+        )}
       </div>
     </aside>
   );

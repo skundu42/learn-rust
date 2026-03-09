@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import {
   BookOpen,
@@ -12,9 +12,11 @@ import {
   ArrowRight,
   Github,
   Play,
+  LogOut,
+  User,
 } from "lucide-react";
 import { type Lesson, type TrackMeta, getLessonsByTrack } from "@/lib/lessons";
-import { getCompletedLessons } from "@/lib/utils";
+import { signOut } from "@/app/auth/actions";
 import { cn } from "@/lib/utils";
 
 const TRACK_ICONS: Record<string, React.ReactNode> = {
@@ -33,33 +35,35 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! 🦀", name)
 }`;
 
+interface UserInfo {
+  id: string;
+  email: string;
+  name: string;
+}
+
 interface Props {
   lessons: Lesson[];
   tracks: TrackMeta[];
+  user: UserInfo | null;
+  serverCompletedIds: number[];
 }
 
-export default function HomepageClient({ lessons, tracks }: Props) {
-  const [completed, setCompleted] = useState<number[]>([]);
-  const [mounted, setMounted] = useState(false);
+export default function HomepageClient({ lessons, tracks, user, serverCompletedIds }: Props) {
+  const [isPending, startTransition] = useTransition();
 
-  useEffect(() => {
-    setMounted(true);
-    setCompleted(getCompletedLessons());
-    const handler = () => setCompleted(getCompletedLessons());
-    window.addEventListener("lesson-completed", handler);
-    window.addEventListener("storage", handler);
-    return () => {
-      window.removeEventListener("lesson-completed", handler);
-      window.removeEventListener("storage", handler);
-    };
-  }, []);
-
+  const completed = serverCompletedIds;
   const totalDone = completed.length;
   const totalLessons = lessons.length;
   const overallPct = totalLessons > 0 ? Math.round((totalDone / totalLessons) * 100) : 0;
 
   // Find current lesson (first incomplete)
   const currentLesson = lessons.find((l) => !completed.includes(l.id)) ?? lessons[0];
+
+  const handleSignOut = () => {
+    startTransition(async () => {
+      await signOut();
+    });
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -80,9 +84,41 @@ export default function HomepageClient({ lessons, tracks }: Props) {
               <Github size={14} />
               <span className="hidden sm:inline">Source</span>
             </a>
+            {user ? (
+              <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted">
+                  <User size={12} />
+                  <span className="max-w-[120px] truncate">{user.name || user.email}</span>
+                </div>
+                <button
+                  onClick={handleSignOut}
+                  disabled={isPending}
+                  className="flex items-center gap-1.5 text-xs text-muted hover:text-danger transition-colors disabled:opacity-50"
+                  title="Sign out"
+                >
+                  <LogOut size={13} />
+                  <span className="hidden sm:inline">{isPending ? "..." : "Sign out"}</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/auth/login"
+                  className="text-xs text-muted hover:text-foreground transition-colors"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/auth/sign-up"
+                  className="flex items-center gap-1.5 bg-accent text-white text-xs font-medium px-3 py-1.5 rounded hover:bg-accent/90 transition-colors"
+                >
+                  Sign up free
+                </Link>
+              </div>
+            )}
             <Link
               href={`/learn/${currentLesson.slug}`}
-              className="flex items-center gap-1.5 bg-accent text-white text-xs font-medium px-3 py-1.5 rounded hover:bg-accent/90 transition-colors"
+              className="flex items-center gap-1.5 bg-accent/10 border border-accent/20 text-accent text-xs font-medium px-3 py-1.5 rounded hover:bg-accent/20 transition-colors"
             >
               <Play size={12} />
               {totalDone > 0 ? "Continue" : "Start Learning"}
@@ -108,8 +144,8 @@ export default function HomepageClient({ lessons, tracks }: Props) {
               installation required.
             </p>
 
-            {/* Progress if started */}
-            {mounted && totalDone > 0 && (
+            {/* Progress if signed in and started */}
+            {user && totalDone > 0 && (
               <div className="mb-6 p-4 rounded-lg bg-surface border border-[var(--border)]">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">Your progress</span>
@@ -216,9 +252,7 @@ export default function HomepageClient({ lessons, tracks }: Props) {
               const doneLessons = trackLessons.filter((l) =>
                 completed.includes(l.id)
               );
-              const pct = mounted
-                ? Math.round((doneLessons.length / trackLessons.length) * 100)
-                : 0;
+              const pct = Math.round((doneLessons.length / trackLessons.length) * 100);
               const firstLesson = trackLessons[0];
 
               return (
@@ -252,24 +286,22 @@ export default function HomepageClient({ lessons, tracks }: Props) {
                   <p className="text-xs text-muted leading-relaxed mb-4">
                     {track.description}
                   </p>
-                  {mounted && (
-                    <div>
-                      <div className="flex justify-between items-center mb-1.5">
-                        <span className="text-xs text-muted">
-                          {doneLessons.length}/{trackLessons.length} complete
-                        </span>
-                        <span className="text-xs font-mono" style={{ color: track.color }}>
-                          {pct}%
-                        </span>
-                      </div>
-                      <div className="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all duration-700"
-                          style={{ width: `${pct}%`, background: track.color }}
-                        />
-                      </div>
+                  <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <span className="text-xs text-muted">
+                        {doneLessons.length}/{trackLessons.length} complete
+                      </span>
+                      <span className="text-xs font-mono" style={{ color: track.color }}>
+                        {pct}%
+                      </span>
                     </div>
-                  )}
+                    <div className="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-700"
+                        style={{ width: `${pct}%`, background: track.color }}
+                      />
+                    </div>
+                  </div>
                 </Link>
               );
             })}
@@ -300,8 +332,8 @@ export default function HomepageClient({ lessons, tracks }: Props) {
                   </div>
                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
                     {trackLessons.map((lesson) => {
-                      const isDone = mounted && completed.includes(lesson.id);
-                      const isCurrent = mounted && currentLesson.id === lesson.id && !isDone;
+                      const isDone = completed.includes(lesson.id);
+                      const isCurrent = currentLesson.id === lesson.id && !isDone;
                       return (
                         <Link
                           key={lesson.id}

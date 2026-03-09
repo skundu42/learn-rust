@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getLessonBySlug, LESSONS } from "@/lib/lessons";
 import LessonView from "@/components/lesson-view";
+import { getUser, getCompletedLessonIds } from "@/app/auth/actions";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -24,5 +25,15 @@ export default async function LessonPage({ params }: PageProps) {
   const { slug } = await params;
   const lesson = getLessonBySlug(slug);
   if (!lesson) notFound();
-  return <LessonView lesson={lesson} />;
+
+  const user = await getUser();
+  const completedIds = user ? await getCompletedLessonIds() : [];
+
+  return (
+    <LessonView
+      lesson={lesson}
+      user={user ? { id: user.id, email: user.email ?? "", name: user.user_metadata?.full_name ?? "" } : null}
+      initialCompleted={completedIds}
+    />
+  );
 }
