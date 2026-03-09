@@ -1,51 +1,17 @@
-"use client";
+import { getUser, getCompletedLessonIds } from "@/app/auth/actions";
+import LearnLayoutClient from "@/components/learn-layout-client";
 
-import { useState } from "react";
-import Sidebar from "@/components/sidebar";
-import { Menu } from "lucide-react";
+export default async function LearnLayout({ children }: { children: React.ReactNode }) {
+  const user = await getUser();
+  const completedIds = user ? await getCompletedLessonIds() : [];
 
-export default function LearnLayout({ children }: { children: React.ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const userInfo = user
+    ? { id: user.id, email: user.email ?? "", name: user.user_metadata?.full_name ?? "" }
+    : null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-20 bg-black/60 md:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Sidebar — desktop always visible, mobile slide-in */}
-      <div
-        className={`
-          fixed inset-y-0 left-0 z-30 md:relative md:z-auto
-          transition-transform duration-300 ease-in-out
-          ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-        `}
-      >
-        <Sidebar onClose={() => setSidebarOpen(false)} />
-      </div>
-
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Mobile header */}
-        <header className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-[var(--border)] bg-surface shrink-0">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="text-muted hover:text-foreground transition-colors"
-            aria-label="Open menu"
-          >
-            <Menu size={20} />
-          </button>
-          <span className="font-mono font-bold">
-            <span className="text-accent">rust</span>learn
-          </span>
-        </header>
-
-        <main className="flex-1 overflow-hidden">{children}</main>
-      </div>
-    </div>
+    <LearnLayoutClient user={userInfo} completedIds={completedIds}>
+      {children}
+    </LearnLayoutClient>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
   CheckCircle2,
@@ -11,9 +12,11 @@ import {
   Lightbulb,
   Tag,
   BookOpen,
+  Lock,
+  ArrowRight,
 } from "lucide-react";
 import { type Lesson, TRACKS, getNextLesson, getPrevLesson } from "@/lib/lessons";
-import { markLessonComplete, markLessonIncomplete, getCompletedLessons } from "@/lib/utils";
+import { markLessonCompleteServer, markLessonIncompleteServer } from "@/app/auth/actions";
 import { cn } from "@/lib/utils";
 
 const RustIDE = dynamic(() => import("@/components/rust-ide"), {
@@ -41,36 +44,91 @@ const TRACK_COLORS: Record<string, string> = {
   projects: "#22c55e",
 };
 
-interface LessonViewProps {
-  lesson: Lesson;
+interface UserInfo {
+  id: string;
+  email: string;
+  name: string;
 }
 
-export default function LessonView({ lesson }: LessonViewProps) {
-  const [completed, setCompleted] = useState(false);
+interface LessonViewProps {
+  lesson: Lesson;
+  user: UserInfo | null;
+  initialCompleted: number[];
+}
+
+// Lesson 1 (id === 1) is free for everyone
+const FREE_LESSON_ID = 1;
+
+export default function LessonView({ lesson, user, initialCompleted }: LessonViewProps) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [completed, setCompleted] = useState(initialCompleted.includes(lesson.id));
   const [showHint, setShowHint] = useState(false);
   const [panelView, setPanelView] = useState<"info" | "ide">("info");
 
   const nextLesson = getNextLesson(lesson.id);
   const prevLesson = getPrevLesson(lesson.id);
   const track = TRACKS.find((t) => t.id === lesson.track);
-
-  useEffect(() => {
-    const ids = getCompletedLessons();
-    setCompleted(ids.includes(lesson.id));
-  }, [lesson.id]);
+  const isLocked = !user && lesson.id !== FREE_LESSON_ID;
+  const trackColor = TRACK_COLORS[lesson.track];
 
   const toggleComplete = () => {
-    if (completed) {
-      markLessonIncomplete(lesson.id);
-      setCompleted(false);
-    } else {
-      markLessonComplete(lesson.id);
-      setCompleted(true);
-    }
-    window.dispatchEvent(new Event("lesson-completed"));
+    if (!user) return;
+    startTransition(async () => {
+      if (completed) {
+        await markLessonIncompleteServer(lesson.id);
+        setCompleted(false);
+      } else {
+        await markLessonCompleteServer(lesson.id);
+        setCompleted(true);
+      }
+      router.refresh();
+    });
   };
 
-  const trackColor = TRACK_COLORS[lesson.track];
+  // Auth gate — shown when a non-signed-in user tries to open a locked lesson
+  if (isLocked) {
+    return (
+      <div className="h-full flex items-center justify-center bg-background px-4">
+        <div className="w-full max-w-md text-center">
+          <div className="w-14 h-14 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center mx-auto mb-5">
+            <Lock size={24} className="text-accent" />
+          </div>
+
+          <h2 className="text-xl font-bold text-foreground mb-2 text-balance">
+            Sign in to unlock this lesson
+          </h2>
+          <p className="text-sm text-muted leading-relaxed mb-6 max-w-sm mx-auto">
+            <span className="text-foreground font-medium">{lesson.title}</span> is
+            part of the full curriculum. Create a free account to access all 36
+            lessons and track your progress.
+          </p>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              href={`/auth/sign-up?next=/learn/${lesson.slug}`}
+              className="flex items-center justify-center gap-2 bg-accent text-white px-5 py-2.5 rounded font-medium text-sm hover:bg-accent/90 transition-colors"
+            >
+              Create free account
+              <ArrowRight size={14} />
+            </Link>
+            <Link
+              href={`/auth/login?next=/learn/${lesson.slug}`}
+              className="flex items-center justify-center gap-2 border border-[var(--border)] text-muted px-5 py-2.5 rounded font-medium text-sm hover:text-foreground hover:border-[var(--muted)] transition-colors"
+            >
+              Sign in
+            </Link>
+          </div>
+
+          <p className="text-xs text-muted mt-6">
+            <Link href="/learn/hello-world" className="hover:text-foreground transition-colors">
+              ← Back to lesson 1 (free)
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -115,10 +173,7 @@ export default function LessonView({ lesson }: LessonViewProps) {
               {track && (
                 <span
                   className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                  style={{
-                    color: trackColor,
-                    background: `${trackColor}18`,
-                  }}
+                  style={{ color: trackColor, background: `${trackColor}18` }}
                 >
                   {track.label}
                 </span>
@@ -139,9 +194,7 @@ export default function LessonView({ lesson }: LessonViewProps) {
             <h1 className="text-xl font-bold text-foreground text-balance leading-tight mb-2">
               {lesson.title}
             </h1>
-            <p className="text-sm text-muted leading-relaxed">
-              {lesson.description}
-            </p>
+            <p className="text-sm text-muted leading-relaxed">{lesson.description}</p>
           </div>
 
           {/* Concepts */}
@@ -175,7 +228,7 @@ export default function LessonView({ lesson }: LessonViewProps) {
             </button>
             {showHint && (
               <div className="mt-3 p-3 rounded bg-warning/5 border border-warning/20">
-                <p className="text-xs text-[var(--foreground)] leading-relaxed font-mono">
+                <p className="text-xs text-foreground leading-relaxed font-mono">
                   {lesson.solutionHint}
                 </p>
               </div>
@@ -200,32 +253,42 @@ export default function LessonView({ lesson }: LessonViewProps) {
             </div>
           </div>
 
-          {/* Spacer */}
           <div className="flex-1" />
 
           {/* Navigation & complete */}
           <div className="px-6 py-4 border-t border-[var(--border)] shrink-0 space-y-3">
-            <button
-              onClick={toggleComplete}
-              className={cn(
-                "w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded font-medium text-sm transition-colors",
-                completed
-                  ? "bg-success/10 text-success border border-success/20 hover:bg-success/20"
-                  : "bg-accent text-white hover:bg-accent/90"
-              )}
-            >
-              {completed ? (
-                <>
-                  <CheckCircle2 size={15} />
-                  Completed
-                </>
-              ) : (
-                <>
-                  <Circle size={15} />
-                  Mark as Complete
-                </>
-              )}
-            </button>
+            {user ? (
+              <button
+                onClick={toggleComplete}
+                disabled={isPending}
+                className={cn(
+                  "w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded font-medium text-sm transition-colors",
+                  "disabled:opacity-60 disabled:cursor-not-allowed",
+                  completed
+                    ? "bg-success/10 text-success border border-success/20 hover:bg-success/20"
+                    : "bg-accent text-white hover:bg-accent/90"
+                )}
+              >
+                {completed ? (
+                  <>
+                    <CheckCircle2 size={15} />
+                    Completed
+                  </>
+                ) : (
+                  <>
+                    <Circle size={15} />
+                    {isPending ? "Saving..." : "Mark as Complete"}
+                  </>
+                )}
+              </button>
+            ) : (
+              <Link
+                href={`/auth/sign-up?next=/learn/${lesson.slug}`}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded font-medium text-sm bg-accent text-white hover:bg-accent/90 transition-colors"
+              >
+                Sign in to track progress
+              </Link>
+            )}
 
             <div className="flex gap-2">
               {prevLesson ? (
