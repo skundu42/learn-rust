@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { getLessonBySlug, LESSONS } from "@/lib/lessons";
+import { LESSONS } from "@/lib/lessons";
+import { getLessonBySlug } from "@/lib/lessons-server";
 import LessonView from "@/components/lesson-view";
 import { getLessonProgress, getUser } from "@/app/auth/actions";
 import { getCompletedLessonIdsFromProgress } from "@/lib/lesson-progress";
