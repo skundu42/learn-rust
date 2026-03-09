@@ -8,6 +8,8 @@ import {
   type LessonProgressRow,
   normalizeProgressRow,
 } from "@/lib/lesson-progress";
+import { verifyLessonCode } from "@/lib/lesson-verification";
+import type { LessonVerificationResult } from "@/lib/lesson-verification-types";
 import { createClient } from "@/lib/supabase/server";
 
 async function getAuthenticatedContext() {
@@ -194,4 +196,42 @@ export async function markLessonIncompleteServer(lessonId: number) {
   if (error) return { error: error.message };
   revalidateProgressViews();
   return { error: null };
+}
+
+export async function verifyLessonSolutionServer(
+  lessonId: number,
+  code: string
+): Promise<LessonVerificationResult> {
+  const result = await verifyLessonCode(lessonId, code);
+
+  if (!result.passed) {
+    return result;
+  }
+
+  const user = await getUser();
+  if (!user) {
+    return {
+      ...result,
+      summary: `${result.summary} Sign in to save this completion to your progress.`,
+      progressSaved: false,
+    };
+  }
+
+  const completion = await markLessonCompleteServer(lessonId);
+  if (completion.error) {
+    return {
+      ...result,
+      summary: `${result.summary} The solution passed, but progress could not be saved.`,
+      details: [result.details, `Progress save error: ${completion.error}`]
+        .filter(Boolean)
+        .join("\n\n"),
+      progressSaved: false,
+    };
+  }
+
+  return {
+    ...result,
+    summary: `${result.summary} Marked complete.`,
+    progressSaved: true,
+  };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -16,7 +16,11 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { type Lesson, TRACKS, getNextLesson, getPrevLesson } from "@/lib/lessons";
-import { markLessonCompleteServer, markLessonIncompleteServer } from "@/app/auth/actions";
+import {
+  markLessonIncompleteServer,
+  verifyLessonSolutionServer,
+} from "@/app/auth/actions";
+import type { LessonVerificationResult } from "@/lib/lesson-verification-types";
 import { cn } from "@/lib/utils";
 import ProgressTracker from "@/components/progress-tracker";
 
@@ -64,8 +68,10 @@ export default function LessonView({ lesson, user, initialCompleted }: LessonVie
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [completed, setCompleted] = useState(initialCompleted.includes(lesson.id));
+  const [code, setCode] = useState(lesson.starterCode);
   const [showHint, setShowHint] = useState(false);
   const [panelView, setPanelView] = useState<"info" | "ide">("info");
+  const [verification, setVerification] = useState<LessonVerificationResult | null>(null);
 
   const nextLesson = getNextLesson(lesson.id);
   const prevLesson = getPrevLesson(lesson.id);
@@ -73,16 +79,50 @@ export default function LessonView({ lesson, user, initialCompleted }: LessonVie
   const isLocked = !user && lesson.id !== FREE_LESSON_ID;
   const trackColor = TRACK_COLORS[lesson.track];
 
-  const toggleComplete = () => {
-    if (!user) return;
+  useEffect(() => {
+    setCompleted(initialCompleted.includes(lesson.id));
+    setCode(lesson.starterCode);
+    setShowHint(false);
+    setPanelView("info");
+    setVerification(null);
+  }, [initialCompleted, lesson.id, lesson.starterCode]);
+
+  const updateCode = (nextCode: string) => {
+    setCode(nextCode);
+    setVerification(null);
+  };
+
+  const verifyAndComplete = () => {
     startTransition(async () => {
-      if (completed) {
-        await markLessonIncompleteServer(lesson.id);
-        setCompleted(false);
-      } else {
-        await markLessonCompleteServer(lesson.id);
+      const result = await verifyLessonSolutionServer(lesson.id, code);
+      setVerification(result);
+
+      if (result.progressSaved) {
         setCompleted(true);
+        router.refresh();
       }
+    });
+  };
+
+  const markIncomplete = () => {
+    if (!user) return;
+
+    startTransition(async () => {
+      const result = await markLessonIncompleteServer(lesson.id);
+
+      if (result.error) {
+        setVerification({
+          passed: false,
+          method: "hidden-tests",
+          summary: "Could not update lesson progress.",
+          details: result.error,
+          progressSaved: false,
+        });
+        return;
+      }
+
+      setCompleted(false);
+      setVerification(null);
       router.refresh();
     });
   };
@@ -260,37 +300,81 @@ export default function LessonView({ lesson, user, initialCompleted }: LessonVie
 
           {/* Navigation & complete */}
           <div className="px-6 py-4 border-t border-[var(--border)] shrink-0 space-y-3">
-            {user ? (
+            {user && completed ? (
               <button
-                onClick={toggleComplete}
+                onClick={markIncomplete}
                 disabled={isPending}
                 className={cn(
                   "w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded font-medium text-sm transition-colors",
                   "disabled:opacity-60 disabled:cursor-not-allowed",
-                  completed
-                    ? "bg-success/10 text-success border border-success/20 hover:bg-success/20"
-                    : "bg-accent text-white hover:bg-accent/90"
+                  "bg-success/10 text-success border border-success/20 hover:bg-success/20"
                 )}
               >
-                {completed ? (
-                  <>
-                    <CheckCircle2 size={15} />
-                    Completed
-                  </>
-                ) : (
-                  <>
-                    <Circle size={15} />
-                    {isPending ? "Saving..." : "Mark as Complete"}
-                  </>
-                )}
+                <CheckCircle2 size={15} />
+                {isPending ? "Updating..." : "Mark as Incomplete"}
               </button>
             ) : (
+              <button
+                onClick={verifyAndComplete}
+                disabled={isPending}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded font-medium text-sm bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Circle size={15} />
+                {isPending
+                  ? user
+                    ? "Verifying..."
+                    : "Checking..."
+                  : user
+                  ? "Verify & Mark Complete"
+                  : "Verify Solution"}
+              </button>
+            )}
+
+            {!user && (
               <Link
                 href={`/auth/login?next=/learn/${lesson.slug}`}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded font-medium text-sm bg-accent text-white hover:bg-accent/90 transition-colors"
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded font-medium text-sm border border-[var(--border)] text-muted hover:text-foreground hover:border-[var(--muted)] transition-colors"
               >
-                Sign in to track progress
+                Sign in to save progress
               </Link>
+            )}
+
+            {verification && (
+              <div
+                className={cn(
+                  "rounded border p-3",
+                  verification.passed
+                    ? "bg-success/5 border-success/20"
+                    : "bg-danger/5 border-danger/20"
+                )}
+              >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span
+                    className={cn(
+                      "text-[10px] uppercase tracking-wide font-semibold",
+                      verification.passed ? "text-success" : "text-danger"
+                    )}
+                  >
+                    {verification.method === "hidden-tests" ? "Hidden tests" : "Output check"}
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[10px] uppercase tracking-wide font-semibold",
+                      verification.passed ? "text-success" : "text-danger"
+                    )}
+                  >
+                    {verification.passed ? "Passed" : "Failed"}
+                  </span>
+                </div>
+                <p className="text-xs text-foreground leading-relaxed">
+                  {verification.summary}
+                </p>
+                {verification.details && (
+                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed text-muted font-mono">
+                    {verification.details}
+                  </pre>
+                )}
+              </div>
             )}
 
             <div className="flex gap-2">
@@ -332,7 +416,11 @@ export default function LessonView({ lesson, user, initialCompleted }: LessonVie
             panelView === "info" ? "hidden md:flex" : "flex"
           )}
         >
-          <RustIDE initialCode={lesson.starterCode} lessonId={lesson.id} />
+          <RustIDE
+            code={code}
+            initialCode={lesson.starterCode}
+            onCodeChange={updateCode}
+          />
         </div>
       </div>
     </div>

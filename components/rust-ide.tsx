@@ -24,12 +24,12 @@ interface RunResult {
 }
 
 interface RustIDEProps {
+  code: string;
   initialCode: string;
-  lessonId: number;
+  onCodeChange: (code: string) => void;
 }
 
-export default function RustIDE({ initialCode, lessonId }: RustIDEProps) {
-  const [code, setCode] = useState(initialCode);
+export default function RustIDE({ code, initialCode, onCodeChange }: RustIDEProps) {
   const [result, setResult] = useState<RunResult | null>(null);
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -96,7 +96,7 @@ export default function RustIDE({ initialCode, lessonId }: RustIDEProps) {
   }, [code, running]);
 
   const resetCode = () => {
-    setCode(initialCode);
+    onCodeChange(initialCode);
     setResult(null);
   };
 
@@ -167,7 +167,7 @@ export default function RustIDE({ initialCode, lessonId }: RustIDEProps) {
       <div className="flex-1 overflow-auto min-h-0">
         <CodeMirror
           value={code}
-          onChange={setCode}
+          onChange={onCodeChange}
           extensions={[rust()]}
           theme={oneDark}
           height="100%"
