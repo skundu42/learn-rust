@@ -9,6 +9,25 @@ A hands-on, step-by-step Rust tutorial with 36 lessons covering fundamentals, ad
 3. Read the comments in each `.rs` file — they explain every concept
 4. Try modifying the examples and re-running them
 
+## Web App Setup
+
+1. Install frontend dependencies: `pnpm install`
+2. Copy `.env.example` to `.env.local`
+3. Fill in:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `NEXT_PUBLIC_SITE_URL` (`http://localhost:3000` in local development)
+4. In Supabase SQL Editor, run:
+   - `scripts/001_create_profiles.sql`
+   - `scripts/002_profile_trigger.sql`
+   - `scripts/003_create_progress.sql`
+   - `scripts/004_upgrade_progress_tracking.sql` if you already created `lesson_progress`
+5. In Supabase Auth URL settings, add `http://localhost:3000/auth/callback` as a redirect URL
+6. Start the app with `pnpm dev`
+
+The app now stores per-user lesson progress with `started_at`, `last_viewed_at`,
+`completed_at`, `status`, and `visit_count` in `public.lesson_progress`.
+
 ### Running Steps 01–30 (Single Files)
 
 ```bash

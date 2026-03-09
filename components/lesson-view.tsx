@@ -18,6 +18,7 @@ import {
 import { type Lesson, TRACKS, getNextLesson, getPrevLesson } from "@/lib/lessons";
 import { markLessonCompleteServer, markLessonIncompleteServer } from "@/app/auth/actions";
 import { cn } from "@/lib/utils";
+import ProgressTracker from "@/components/progress-tracker";
 
 const RustIDE = dynamic(() => import("@/components/rust-ide"), {
   ssr: false,
@@ -132,6 +133,8 @@ export default function LessonView({ lesson, user, initialCompleted }: LessonVie
 
   return (
     <div className="h-full flex flex-col">
+      <ProgressTracker enabled={Boolean(user)} lessonId={lesson.id} />
+
       {/* Mobile tab toggle */}
       <div className="flex md:hidden border-b border-[var(--border)] bg-surface shrink-0">
         <button
@@ -283,7 +286,7 @@ export default function LessonView({ lesson, user, initialCompleted }: LessonVie
               </button>
             ) : (
               <Link
-                href={`/auth/sign-up?next=/learn/${lesson.slug}`}
+                href={`/auth/login?next=/learn/${lesson.slug}`}
                 className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded font-medium text-sm bg-accent text-white hover:bg-accent/90 transition-colors"
               >
                 Sign in to track progress

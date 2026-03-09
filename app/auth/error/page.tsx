@@ -1,7 +1,17 @@
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 
-export default function AuthErrorPage() {
+interface AuthErrorPageProps {
+  searchParams?: Promise<{ reason?: string }>;
+}
+
+export default async function AuthErrorPage({ searchParams }: AuthErrorPageProps) {
+  const params = searchParams ? await searchParams : undefined;
+  const message =
+    params?.reason === "config"
+      ? "Supabase auth is not configured correctly. Check your public env vars and callback URL."
+      : "Something went wrong during sign in. The link may have expired or already been used.";
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-sm text-center">
@@ -17,8 +27,7 @@ export default function AuthErrorPage() {
 
           <h1 className="text-lg font-semibold text-foreground mb-2">Authentication error</h1>
           <p className="text-sm text-muted leading-relaxed mb-6">
-            Something went wrong during sign in. The link may have expired or
-            already been used.
+            {message}
           </p>
 
           <Link

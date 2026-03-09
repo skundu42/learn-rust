@@ -13,6 +13,7 @@ release/
 # Local runtime data
 .env
 .env.*
+!.env.example
 *.db
 *.db-shm
 *.db-wal
@@ -27,3 +28,8 @@ release/
 .DS_Store
 .idea/
 .vscode/
+
+# Next.js / Node.js artifacts
+.next/
+node_modules/
+next-env.d.ts

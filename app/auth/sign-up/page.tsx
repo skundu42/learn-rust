@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { buildAuthCallbackUrl, getSafeRedirectPath } from "@/lib/supabase/env";
 import { cn } from "@/lib/utils";
 
-export default function SignUpPage() {
+function SignUpPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/learn/hello-world";
+  const next = getSafeRedirectPath(searchParams.get("next"));
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -29,14 +31,19 @@ export default function SignUpPage() {
 
     setLoading(true);
     const supabase = createClient();
+    if (!supabase) {
+      setError(
+        "Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and NEXT_PUBLIC_SITE_URL."
+      );
+      setLoading(false);
+      return;
+    }
 
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo:
-          process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
-          `${window.location.origin}/auth/sign-up-success`,
+        emailRedirectTo: buildAuthCallbackUrl(next, window.location.origin),
         data: { full_name: fullName },
       },
     });
@@ -47,7 +54,12 @@ export default function SignUpPage() {
       return;
     }
 
-    // Redirect to confirmation page
+    if (data.session) {
+      router.push(next);
+      router.refresh();
+      return;
+    }
+
     window.location.href = `/auth/sign-up-success?next=${encodeURIComponent(next)}`;
   };
 
@@ -165,11 +177,22 @@ export default function SignUpPage() {
 
         <p className="text-center text-xs text-muted mt-4">
           Already have an account?{" "}
-          <Link href="/auth/login" className="text-accent hover:underline">
+          <Link
+            href={`/auth/login${next !== "/learn/hello-world" ? `?next=${encodeURIComponent(next)}` : ""}`}
+            className="text-accent hover:underline"
+          >
             Sign in
           </Link>
         </p>
       </div>
     </div>
+  );
+}
+
+export default function SignUpPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <SignUpPageContent />
+    </Suspense>
   );
 }

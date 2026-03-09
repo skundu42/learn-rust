@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { getLessonBySlug, LESSONS } from "@/lib/lessons";
 import LessonView from "@/components/lesson-view";
-import { getUser, getCompletedLessonIds } from "@/app/auth/actions";
+import { getLessonProgress, getUser } from "@/app/auth/actions";
+import { getCompletedLessonIdsFromProgress } from "@/lib/lesson-progress";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -27,7 +28,8 @@ export default async function LessonPage({ params }: PageProps) {
   if (!lesson) notFound();
 
   const user = await getUser();
-  const completedIds = user ? await getCompletedLessonIds() : [];
+  const progress = user ? await getLessonProgress() : [];
+  const completedIds = getCompletedLessonIdsFromProgress(progress);
 
   return (
     <LessonView

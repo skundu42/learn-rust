@@ -46,9 +46,18 @@ interface Props {
   tracks: TrackMeta[];
   user: UserInfo | null;
   serverCompletedIds: number[];
+  inProgressCount: number;
+  lastViewedLessonId: number | null;
 }
 
-export default function HomepageClient({ lessons, tracks, user, serverCompletedIds }: Props) {
+export default function HomepageClient({
+  lessons,
+  tracks,
+  user,
+  serverCompletedIds,
+  inProgressCount,
+  lastViewedLessonId,
+}: Props) {
   const [isPending, startTransition] = useTransition();
 
   const completed = serverCompletedIds;
@@ -56,8 +65,13 @@ export default function HomepageClient({ lessons, tracks, user, serverCompletedI
   const totalLessons = lessons.length;
   const overallPct = totalLessons > 0 ? Math.round((totalDone / totalLessons) * 100) : 0;
 
-  // Find current lesson (first incomplete)
-  const currentLesson = lessons.find((l) => !completed.includes(l.id)) ?? lessons[0];
+  const lastViewedLesson = lessons.find((lesson) => lesson.id === lastViewedLessonId);
+  const nextIncompleteLesson = lessons.find((lesson) => !completed.includes(lesson.id));
+  const currentLesson =
+    (lastViewedLesson && !completed.includes(lastViewedLesson.id) ? lastViewedLesson : null) ??
+    nextIncompleteLesson ??
+    lastViewedLesson ??
+    lessons[0];
 
   const handleSignOut = () => {
     startTransition(async () => {
@@ -168,6 +182,12 @@ export default function HomepageClient({ lessons, tracks, user, serverCompletedI
                     {currentLesson.title}
                   </Link>
                 </p>
+                {inProgressCount > 0 && (
+                  <p className="text-xs text-muted mt-1">
+                    {inProgressCount} lesson{inProgressCount === 1 ? "" : "s"} currently in
+                    progress
+                  </p>
+                )}
               </div>
             )}
 
